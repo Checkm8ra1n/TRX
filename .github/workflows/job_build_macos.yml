@@ -1,7 +1,6 @@
-name: Build TRX and the installer (macOS)
+name: Build TRX and the installer (macOS) - Unsigned Test
 
 on:
-  # Permette l'esecuzione manuale dalla scheda Actions di GitHub
   workflow_dispatch:
     inputs:
       target:
@@ -18,7 +17,6 @@ on:
         required: false
         default: false
 
-  # Mantiene la possibilità di essere chiamato da altri workflow
   workflow_call:
     inputs:
       target:
@@ -47,24 +45,8 @@ jobs:
     runs-on: macos-14
     continue-on-error: ${{ inputs.let_mac_fail == true || inputs.let_mac_fail == 'true' }}
     steps:
-      - name: Set up signing certificate
-        env:
-          MACOS_KEYCHAIN_PWD: ${{ secrets.MACOS_KEYCHAIN_PWD }}
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
-        run: |
-          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          echo -n "$MACOS_CERTIFICATE" | base64 --decode -o $CERTIFICATE_PATH
-          security create-keychain -p "$MACOS_KEYCHAIN_PWD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$MACOS_KEYCHAIN_PWD" $KEYCHAIN_PATH
-          security import $CERTIFICATE_PATH -P "$MACOS_KEYCHAIN_PWD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH -T /usr/bin/codesign
-          security list-keychain -d user -s $KEYCHAIN_PATH
-          security set-key-partition-list -S "apple-tool:,apple:,codesign:" -s -k $MACOS_KEYCHAIN_PWD $KEYCHAIN_PATH
-
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@v4
         with:
           submodules: 'true'
           fetch-depth: 0
@@ -80,21 +62,23 @@ jobs:
 
       - name: Extend PATH for MacPorts
         run: |
-          echo -e "/opt/local/bin" >> $GITHUB_PATH
-          echo -e "/opt/local/sbin" >> $GITHUB_PATH
+          echo "/opt/local/bin" >> $GITHUB_PATH
+          echo "/opt/local/sbin" >> $GITHUB_PATH
 
       - name: "Try restore dependencies from cache"
         id: restore-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@v4
         with:
           key: ${{ runner.os }}-tooling-${{ hashFiles('.github/actions/prepare_macos_tooling/action.yml') }}
           path: |
             /tmp/opt_local/
+
       - name: "Build MacOS dependencies"
         if: steps.restore-cache.outputs.cache-hit != 'true'
         uses: ./.github/actions/prepare_macos_tooling
         with:
           CACHE_DIR: /tmp/opt_local/
+
       - name: "Prepare cached dependencies for use"
         if: steps.restore-cache.outputs.cache-hit == 'true'
         shell: bash
@@ -120,7 +104,6 @@ jobs:
           sudo port -N install apple-pki-bundle curl-ca-bundle
 
       - name: Download large assets
-        #if: ${{ inputs.target == 'release' }}
         run: tools/download_assets
 
       - name: Build arm64 and create app bundle
@@ -158,32 +141,15 @@ jobs:
           # Update dynamic library links in the fused executable.
           ./tools/shared/mac/bundle_dylibs -a ${{ steps.vars.outputs.name }} --links-only
 
-      - name: Sign app bundle
+      - name: Create disk image (DMG)
         run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          IDENTITY=$(security find-identity -v -p codesigning $KEYCHAIN_PATH | awk -F'"' '{print $2}')
-          xattr -cr /tmp/${{ steps.vars.outputs.name }}.app
-          /usr/bin/codesign --force --deep --options runtime -s "${IDENTITY}" --keychain $KEYCHAIN_PATH -v /tmp/${{ steps.vars.outputs.name }}.app
-
-      - name: Create, sign and notarize disk image
-        env:
-          MACOS_APPLEID: ${{ secrets.MACOS_APPLEID }}
-          MACOS_APP_PWD: ${{ secrets.MACOS_APP_PWD }}
-          MACOS_TEAMID: ${{ secrets.MACOS_TEAMID }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          IDENTITY=$(security find-identity -v -p codesigning $KEYCHAIN_PATH | awk -F'"' '{print $2}')
           DMG_NAME="${{ steps.vars.outputs.asset_name }}.dmg"
           tools/shared/mac/create_installer -a ${{ steps.vars.outputs.name }} -i "data/trx/mac/icon.icns" -d "${DMG_NAME}"
-          xattr -cr "${DMG_NAME}"
-          /usr/bin/codesign --force --options runtime -s "${IDENTITY}" --keychain $KEYCHAIN_PATH -v "${DMG_NAME}"
-          xcrun notarytool submit --wait --apple-id "$MACOS_APPLEID" --password "$MACOS_APP_PWD" --team-id "$MACOS_TEAMID" "${DMG_NAME}"
-          xcrun stapler staple -v "${DMG_NAME}"
 
-      - name: Upload signed+notarized installer image
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Upload installer image
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.vars.outputs.asset_name }}
           path: |
             *.dmg
-          compression-level: 0 # .dmg is already compressed.
+          compression-level: 0
