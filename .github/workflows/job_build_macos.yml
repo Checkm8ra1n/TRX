@@ -111,11 +111,14 @@ jobs:
           CC: clang
         run: |
           BUILD_DIR=build-arm64
-          BUILD_FLAGS="-mmacosx-version-min=12.0"
-          LINK_FLAGS="-mmacosx-version-min=12.0 -Wl,-headerpad_max_install_names"
-          BUILD_OPTIONS="src --prefix=/tmp/${{ steps.vars.outputs.name }}.app --bindir=Contents/MacOS --buildtype ${{ inputs.target }} -Dlua_dep=lua5.4 -Dc_args=\"$BUILD_FLAGS\" -Dc_link_args=\"$LINK_FLAGS\""
+          meson setup $BUILD_DIR src \
+            --prefix=/tmp/${{ steps.vars.outputs.name }}.app \
+            --bindir=Contents/MacOS \
+            --buildtype ${{ inputs.target }} \
+            -Dlua_dep=lua5.4 \
+            -Dc_args="-mmacosx-version-min=12.0" \
+            -Dc_link_args="-mmacosx-version-min=12.0 -Wl,-headerpad_max_install_names"
           
-          meson setup $BUILD_DIR $BUILD_OPTIONS
           meson install -C $BUILD_DIR --tags "trx,common"
 
       - name: Build x86-64
@@ -123,11 +126,15 @@ jobs:
           CC: clang
         run: |
           BUILD_DIR=build-x86-64
-          BUILD_FLAGS="-mmacosx-version-min=12.0"
-          LINK_FLAGS="-mmacosx-version-min=12.0 -Wl,-headerpad_max_install_names"
-          BUILD_OPTIONS="src --prefix=/tmp/${{ steps.vars.outputs.name }}.app --bindir=Contents/MacOS --cross-file tools/shared/mac/x86-64_cross_file.txt --buildtype ${{ inputs.target }} -Dlua_dep=lua5.4 -Dc_args=\"$BUILD_FLAGS\" -Dc_link_args=\"$LINK_FLAGS\""
+          meson setup $BUILD_DIR src \
+            --prefix=/tmp/${{ steps.vars.outputs.name }}.app \
+            --bindir=Contents/MacOS \
+            --cross-file tools/shared/mac/x86-64_cross_file.txt \
+            --buildtype ${{ inputs.target }} \
+            -Dlua_dep=lua5.4 \
+            -Dc_args="-mmacosx-version-min=12.0" \
+            -Dc_link_args="-mmacosx-version-min=12.0 -Wl,-headerpad_max_install_names"
           
-          meson setup $BUILD_DIR $BUILD_OPTIONS
           meson compile -C $BUILD_DIR
 
       - name: Fuse universal executable
