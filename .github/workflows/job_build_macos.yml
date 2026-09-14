@@ -1,6 +1,24 @@
 name: Build TRX and the installer (macOS)
 
 on:
+  # Permette l'esecuzione manuale dalla scheda Actions di GitHub
+  workflow_dispatch:
+    inputs:
+      target:
+        type: choice
+        description: "Target to build for"
+        required: true
+        default: "release"
+        options:
+          - release
+          - debug
+      let_mac_fail:
+        type: boolean
+        description: "Do not require Mac builds to pass"
+        required: false
+        default: false
+
+  # Mantiene la possibilità di essere chiamato da altri workflow
   workflow_call:
     inputs:
       target:
@@ -14,6 +32,7 @@ on:
         default: false
 
 env:
+  MACOSX_DEPLOYMENT_TARGET: "12.0"
   FFMPEG_INSTALL_FINAL: /opt/local
   FFMPEG_INSTALL_TMP_UNIVERSAL: /tmp/install_universal
   FFMPEG_INSTALL_TMP_ARM64: /tmp/install_arm64
@@ -109,7 +128,10 @@ jobs:
           CC: clang
         run: |
           BUILD_DIR=build-arm64
-          BUILD_OPTIONS="src --prefix=/tmp/${{ steps.vars.outputs.name }}.app --bindir=Contents/MacOS --buildtype ${{ inputs.target }} -Dlua_dep=lua5.4"
+          BUILD_FLAGS="-mmacosx-version-min=12.0"
+          LINK_FLAGS="-mmacosx-version-min=12.0 -Wl,-headerpad_max_install_names"
+          BUILD_OPTIONS="src --prefix=/tmp/${{ steps.vars.outputs.name }}.app --bindir=Contents/MacOS --buildtype ${{ inputs.target }} -Dlua_dep=lua5.4 -Dc_args=\"$BUILD_FLAGS\" -Dc_link_args=\"$LINK_FLAGS\""
+          
           meson setup $BUILD_DIR $BUILD_OPTIONS
           meson install -C $BUILD_DIR --tags "trx,common"
 
@@ -118,7 +140,10 @@ jobs:
           CC: clang
         run: |
           BUILD_DIR=build-x86-64
-          BUILD_OPTIONS="src --prefix=/tmp/${{ steps.vars.outputs.name }}.app --bindir=Contents/MacOS --cross-file tools/shared/mac/x86-64_cross_file.txt --buildtype ${{ inputs.target }} -Dlua_dep=lua5.4"
+          BUILD_FLAGS="-mmacosx-version-min=12.0"
+          LINK_FLAGS="-mmacosx-version-min=12.0 -Wl,-headerpad_max_install_names"
+          BUILD_OPTIONS="src --prefix=/tmp/${{ steps.vars.outputs.name }}.app --bindir=Contents/MacOS --cross-file tools/shared/mac/x86-64_cross_file.txt --buildtype ${{ inputs.target }} -Dlua_dep=lua5.4 -Dc_args=\"$BUILD_FLAGS\" -Dc_link_args=\"$LINK_FLAGS\""
+          
           meson setup $BUILD_DIR $BUILD_OPTIONS
           meson compile -C $BUILD_DIR
 
